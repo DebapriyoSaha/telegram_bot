@@ -32,7 +32,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             {"role": "user", "parts": [{"text": user_text}]}
         ]
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("models/gemini-2.5-pro")
+        model = genai.GenerativeModel("models/gemma-3-27b-it")
         response = model.generate_content(contents)
         reply = response.candidates[0].content.parts[0].text if response.candidates else "Sorry, I couldn't generate a response."
     if len(reply) > MAX_TELEGRAM_MSG_LENGTH:
