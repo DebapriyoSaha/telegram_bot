@@ -37,7 +37,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = response.candidates[0].content.parts[0].text if response.candidates else "Sorry, I couldn't generate a response."
     if len(reply) > MAX_TELEGRAM_MSG_LENGTH:
         reply = reply[:MAX_TELEGRAM_MSG_LENGTH]
-    await update.message.reply_text(reply)
+    # Use synchronous message sending for Vercel compatibility
+    application.bot.send_message(chat_id=update.effective_chat.id, text=reply)
 
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
