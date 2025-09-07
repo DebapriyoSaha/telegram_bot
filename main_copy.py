@@ -22,7 +22,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 print("Available Gemini models:")
 for m in genai.list_models():
     print(m.name)
-model = genai.GenerativeModel("models/gemini-2.5-pro")
+model = genai.GenerativeModel("models/gemma-3-27b-it")
 
 logging.basicConfig(level=logging.INFO)
 
