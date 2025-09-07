@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 import google.generativeai as genai
-import asyncio
+import httpx
 from business_tools import get_current_offers, get_diet_plans, place_order
 from dotenv import load_dotenv
 
@@ -38,8 +38,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = response.candidates[0].content.parts[0].text if response.candidates else "Sorry, I couldn't generate a response."
     if len(reply) > MAX_TELEGRAM_MSG_LENGTH:
         reply = reply[:MAX_TELEGRAM_MSG_LENGTH]
-    # Await send_message in async handler
-    await application.bot.send_message(chat_id=update.effective_chat.id, text=reply)
+    # Send Telegram message using direct HTTP request for serverless compatibility
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={
+                "chat_id": update.effective_chat.id,
+                "text": reply
+            }
+        )
 
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
