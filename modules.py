@@ -25,13 +25,16 @@ image_prompt = '''
     Fat: <fat in grams>
 
     Do NOT include any additional text or commentary.
-
+    Only respond with the most accurate protein, carbs, and fat values you can infer from the image.
+    Strictly mention the sources of protein, carbs and fat you can identify in the food item.
+    Strictly use double asterisks for bold and single underscores for italics as per Telegram Markdown formatting.
     If you cannot analyze the image, reply: "Sorry, I couldn't analyze that."
 '''
 
 text_prompt = '''
     You are a helpful assistant. Respond to the user's query in a crisp and concise manner.
     Use double asterisks for bold and single underscores for italics as per Telegram Markdown formatting.
+    Use limited smileys/emojis to make the response friendly.
     Don not use too much italics
     Use proper formatting for lists and line breaks.
     Use numbering for lists where applicable.
@@ -44,64 +47,109 @@ class WelcomeModule:
 
 class ConversationModule:
     @staticmethod
-    def get_response(user_text, gemini_api_key):
+    def get_response(user_text, groq_api_key):
         # Guard rails: block harmful, sexual, or offensive messages
         import re
+        import requests
         block_patterns = [
             r"sex|sexual|porn|nude|naked|violence|kill|murder|hate|racist|abuse|offensive|suicide|self[- ]?harm|terror|bomb|drugs|weapon|assault|molest|rape|harass|bully|exploit|gore|blood|torture|explicit|obscene|curse|swear|profanity|slur"
         ]
         if any(re.search(pat, user_text, re.IGNORECASE) for pat in block_patterns):
-            return "Sorry, I can't assist with that."
-        genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel("models/gemini-2.5-flash")
-        # system_prompt = (
-        #     "You are a helpful assistant. Respond to the user's query in a crisp and concise manner."
-        #     "Use double asterisks for bold and single underscores for italics as per Telegram Markdown formatting."
-        #     "Use proper formatting for lists and line breaks."
-        #     "Strictly refuse to answer any harmful, sexual, violent, or offensive requests. If the user asks anything inappropriate, reply: 'Sorry, I can't assist with that.'"
-        # )
-        contents = [
-            {"role": "model", "parts": [{"text": text_prompt}]},
-            {"role": "user", "parts": [{"text": user_text}]}
-        ]
-        response = model.generate_content(contents)
-        return response.candidates[0].content.parts[0].text if response.candidates else "Sorry, I couldn't generate a response."
+            return "Sorry, I can't assist with that.", 0, 0
+        # Groq API call for text
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {groq_api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "openai/gpt-oss-20b",
+            "messages": [
+                {"role": "system", "content": text_prompt},
+                {"role": "user", "content": user_text}
+            ],
+            "max_tokens": 1024,
+            "temperature": 0.7
+        }
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            if response.status_code == 200:
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
+                output_tokens = data.get("usage", {}).get("completion_tokens", 0)
+                return content, input_tokens, output_tokens
+            else:
+                return "Sorry, I couldn't generate a response.", 0, 0
+        except Exception:
+            return "Sorry, I couldn't generate a response.", 0, 0
 
 class ImageCalorieModule:
     @staticmethod
-    def analyze_image(image_bytes, gemini_api_key, image_url=None, time_elapsed=None):
-        genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel("models/gemini-2.5-flash")
-        prompt = (
-            "You are a nutrition expert. Analyze the food item in this image and reply in the following format, using double asterisks for bold (Telegram markdown):\n"
-            "**Food:** <food>\n**Calories:** <calories>\n**Proteins:** <proteins>\n**Carbs:** <carbs>\n**Fat:** <fat>\n"
-            "Keep the response crisp and concise."
-        )
-        contents = [
-            {"role": "user", "parts": [
-                {"text": image_prompt},
-                {"inline_data": {"mime_type": "image/jpeg", "data": image_bytes}}
-            ]}
-        ]
-        response = model.generate_content(contents)
-        text = response.candidates[0].content.parts[0].text if response.candidates else "Sorry, I couldn't analyze the image."
+    def analyze_image(image_bytes, groq_api_key, image_url=None, time_elapsed=None):
+        import requests
+        import base64
+        # Convert image bytes to base64 string
+        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+        image_b64_url = f"data:image/jpeg;base64,{image_b64}"
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {groq_api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+            "messages": [
+                {"role": "system", "content": image_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Analyze the food in this image."},
+                        {"type": "image_url", "image_url": {"url": image_b64_url}}
+                    ]
+                }
+            ],
+            "max_tokens": 1024,
+            "temperature": 0.2
+        }
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
+            if response.status_code == 200:
+                data = response.json()
+                text = data["choices"][0]["message"]["content"]
+                input_tokens = data.get("usage", {}).get("prompt_tokens", 0)
+                output_tokens = data.get("usage", {}).get("completion_tokens", 0)
+            else:
+                text = "Sorry, I couldn't analyze the image."
+                input_tokens = 0
+                output_tokens = 0
+        except Exception:
+            text = "Sorry, I couldn't analyze the image."
+            input_tokens = 0
+            output_tokens = 0
+        # Log raw response for debugging
+        print("Groq raw response:", text)
         import re
         food = calories = proteins = carbs = fat = ""
-        food_match = re.search(r"\*\*Food:\*\*\s*(.*)", text)
-        calories_match = re.search(r"\*\*Calories:\*\*\s*(\d+)", text)
-        proteins_match = re.search(r"\*\*Proteins:\*\*\s*(\d+)", text)
-        carbs_match = re.search(r"\*\*Carbs:\*\*\s*(\d+)", text)
-        fat_match = re.search(r"\*\*Fat:\*\*\s*(\d+)", text)
-        if food_match:
-            food = food_match.group(1)
-        if calories_match:
-            calories = calories_match.group(1)
-        if proteins_match:
-            proteins = proteins_match.group(1)
-        if carbs_match:
-            carbs = carbs_match.group(1)
-        if fat_match:
-            fat = fat_match.group(1)
+        # Improved regex: capture ranges, parentheticals, and all text after the label
+        def extract_field(label, text):
+            # Match lines like: Calories: _Approximately 500-600 kcal (estimated)_
+            pattern = rf"{label}:\s*([\*_]*)(.+)"
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                value = match.group(2).strip()
+                # Remove Markdown formatting
+                value = re.sub(r"^[*_]+|[_*]+$", "", value)
+                # Remove 'Approximately', 'estimated', etc.
+                value = re.sub(r"(?i)approximately|estimated|about|around", "", value).strip()
+                return value
+            return ""
+
+        food = extract_field("Food", text)
+        calories = extract_field("Calories", text)
+        proteins = extract_field("Proteins", text)
+        carbs = extract_field("Carbs", text)
+        fat = extract_field("Fat", text)
         now = datetime.now()
         entry = MealTrackerEntry(
             date=now.strftime('%Y-%m-%d'),
@@ -114,11 +162,11 @@ class ImageCalorieModule:
             image_url=image_url or "",
             time_elapsed=time_elapsed if time_elapsed is not None else 0.0
         )
-        return entry, text
+        return entry, text, input_tokens, output_tokens
 
 class GoogleSheetsModule:
     @staticmethod
-    def log_chat_history(service, spreadsheet_id, username, user_query, bot_message):
+    def log_chat_history(service, spreadsheet_id, username, user_query, bot_message, input_tokens=0, output_tokens=0):
         from datetime import datetime
         now = datetime.now()
         # Get current number of rows for auto-incremental ID
@@ -126,7 +174,7 @@ class GoogleSheetsModule:
         result = sheet.values().get(spreadsheetId=spreadsheet_id, range="Chat History!B2:B").execute()
         values = result.get('values', [])
         next_id = len(values) + 1
-        row = [next_id, now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), username, user_query, bot_message]
+        row = [next_id, now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), username, user_query, bot_message, input_tokens, output_tokens]
         sheet.values().append(
             spreadsheetId=spreadsheet_id,
             range="Chat History!B1",
@@ -135,7 +183,7 @@ class GoogleSheetsModule:
         ).execute()
 
     @staticmethod
-    def log_meal_tracker(service, spreadsheet_id, client, food, calories, proteins, carbs, fat, picture_url, time_elapsed):
+    def log_meal_tracker(service, spreadsheet_id, client, food, calories, proteins, carbs, fat, picture_url, time_elapsed, input_tokens=0, output_tokens=0):
         from datetime import datetime
         now = datetime.now()
         # Get current number of rows for auto-incremental ID
@@ -143,7 +191,7 @@ class GoogleSheetsModule:
         result = sheet.values().get(spreadsheetId=spreadsheet_id, range="Meal Tracker!B2:B").execute()
         values = result.get('values', [])
         next_id = len(values) + 1
-        row = [next_id, now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), client, food, calories, proteins, carbs, fat, picture_url, time_elapsed]
+        row = [next_id, now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), client, food, calories, proteins, carbs, fat, picture_url, time_elapsed, input_tokens, output_tokens]
         sheet.values().append(
             spreadsheetId=spreadsheet_id,
             range="Meal Tracker!B1",

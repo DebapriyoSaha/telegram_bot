@@ -15,8 +15,9 @@ from googleapiclient.discovery import build
 
 load_dotenv()
 
+# GROQ API Key for LLMs
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET_FILE")
@@ -93,11 +94,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if any(re.search(pat, user_text, re.IGNORECASE) for pat in jailbreak_patterns):
         reply = "I am an AI assistant."
+        input_tokens = 0
+        output_tokens = 0
     elif any(re.match(pat, user_text.strip().lower()) for pat in welcome_patterns):
         reply = WelcomeModule.welcome_message()
+        input_tokens = 0
+        output_tokens = 0
     else:
         full_prompt = (history_prompt + f"User: {user_text}\nBot:") if history_prompt else user_text
-        reply = ConversationModule.get_response(full_prompt, GEMINI_API_KEY)
+        reply, input_tokens, output_tokens = ConversationModule.get_response(full_prompt, GROQ_API_KEY)
 
     # Update history
     user_histories[username].append((user_text, reply))
@@ -105,7 +110,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     GoogleSheetsModule.log_chat_history(
         sheets_service, GOOGLE_SHEET_ID,
-        username, user_text, reply
+        username, user_text, reply, input_tokens, output_tokens
     )
 
     if len(reply) > MAX_TELEGRAM_MSG_LENGTH:
@@ -180,15 +185,20 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Analyze image
     import time
     start_time = time.time()
-    entry, text = ImageCalorieModule.analyze_image(image_bytes, GEMINI_API_KEY, image_url=picture_url, time_elapsed=None)
+    entry, text, input_tokens, output_tokens = ImageCalorieModule.analyze_image(image_bytes, GROQ_API_KEY, image_url=picture_url, time_elapsed=None)
     elapsed = time.time() - start_time
     entry.time_elapsed = elapsed
     reply = f"*Analysis Report*\n{text}\n\n_Image uploaded to Google Drive._\n\n_Analysis time: {elapsed:.2f} seconds_"
     # Log to Meal Tracker sheet
     GoogleSheetsModule.log_meal_tracker(
         sheets_service, GOOGLE_SHEET_ID,
-        username, entry.food, entry.calories, entry.proteins, entry.carbs, entry.fat, entry.image_url, entry.time_elapsed
+        username, entry.food, entry.calories, entry.proteins, entry.carbs, entry.fat, entry.image_url, entry.time_elapsed, input_tokens, output_tokens
     )
+    # Store the analysis report in user_histories for context-aware chat
+    if username not in user_histories:
+        user_histories[username] = []
+    user_histories[username].append(("[Image Analysis]", text))
+    user_histories[username] = user_histories[username][-10:]
     if update.effective_user:
         first_name = update.effective_user.first_name or ""
         last_name = update.effective_user.last_name or ""
