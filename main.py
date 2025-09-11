@@ -26,6 +26,26 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET_FILE")
 app = FastAPI()
 application = Application.builder().token(TELEGRAM_TOKEN).build()
 
+# Register a global error handler for Telegram bot
+from telegram.ext import ContextTypes
+async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    print(f"Telegram error: {context.error}")
+    # Try to notify the user if possible
+    try:
+        if hasattr(update, 'effective_chat') and update.effective_chat:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                    json={
+                        "chat_id": update.effective_chat.id,
+                        "text": "Sorry, an internal error occurred. Please retry your request.",
+                        "parse_mode": "Markdown"
+                    }
+                )
+    except Exception as notify_err:
+        print(f"Failed to notify user of error: {notify_err}")
+application.add_error_handler(global_error_handler)
+
 # Google API clients using OAuth
 SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
 TOKEN_PICKLE = 'token.pickle'
