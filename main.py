@@ -47,7 +47,7 @@ if not creds or not creds.valid:
         import json
         client_config = json.loads(CLIENT_SECRET_JSON)
         flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
-        creds = flow.run_local_server(port=0)
+        creds = flow.run_local_server(access_type='offline', prompt='consent')
     with open(TOKEN_PICKLE, 'wb') as token:
         pickle.dump(creds, token)
 drive_service = build('drive', 'v3', credentials=creds)
