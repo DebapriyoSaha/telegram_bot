@@ -38,22 +38,13 @@ user_histories = {}
 token_str = os.getenv("GOOGLE_OAUTH_TOKEN_PICKLE")
 if token_str:
     creds = pickle.loads(base64.b64decode(token_str))
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(GoogleAuthRequest())
+        else:
+            raise Exception("Google OAuth credentials are invalid or expired. Please refresh your token and update the environment variable.")
 else:
     raise Exception("OAuth token not found in environment variables")
-
-if os.path.exists(TOKEN_PICKLE):
-    with open(TOKEN_PICKLE, 'rb') as token:
-        creds = pickle.load(token)
-if not creds or not creds.valid:
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(GoogleAuthRequest())
-    else:
-        import json
-        client_config = json.loads(CLIENT_SECRET_JSON)
-        flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
-        creds = flow.run_local_server(access_type='offline', prompt='consent')
-    with open(TOKEN_PICKLE, 'wb') as token:
-        pickle.dump(creds, token)
 drive_service = build('drive', 'v3', credentials=creds)
 sheets_service = build('sheets', 'v4', credentials=creds)
 
