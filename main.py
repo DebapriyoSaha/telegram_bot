@@ -29,6 +29,14 @@ TOKEN_PICKLE = 'token.pickle'
 CLIENT_SECRET_JSON = os.getenv("GOOGLE_CLIENT_SECRET_JSON")
 
 creds = None
+
+import os, pickle, base64
+token_str = os.getenv("GOOGLE_OAUTH_TOKEN_PICKLE")
+if token_str:
+    creds = pickle.loads(base64.b64decode(token_str))
+else:
+    raise Exception("OAuth token not found in environment variables")
+
 if os.path.exists(TOKEN_PICKLE):
     with open(TOKEN_PICKLE, 'rb') as token:
         creds = pickle.load(token)
