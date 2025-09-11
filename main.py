@@ -213,11 +213,35 @@ application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
-    data = await request.json()
-    update = Update.de_json(data, application.bot)
-    await application.initialize()
-    await application.process_update(update)
-    return {"ok": True}
+    try:
+        data = await request.json()
+        update = Update.de_json(data, application.bot)
+        await application.initialize()
+        await application.process_update(update)
+        return {"ok": True}
+    except Exception as e:
+        print(f"Webhook error: {e}")
+        # Try to send a reply to the user if possible
+        try:
+            chat_id = None
+            if 'message' in data and 'chat' in data['message']:
+                chat_id = data['message']['chat']['id']
+            elif 'callback_query' in data and 'message' in data['callback_query'] and 'chat' in data['callback_query']['message']:
+                chat_id = data['callback_query']['message']['chat']['id']
+            if chat_id:
+                import httpx
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                        json={
+                            "chat_id": chat_id,
+                            "text": "Sorry, a server error occurred. Please retry your request.",
+                            "parse_mode": "Markdown"
+                        }
+                    )
+        except Exception as send_err:
+            print(f"Failed to send error reply to user: {send_err}")
+        return {"ok": False, "error": "Webhook error occurred. Please retry your request."}
 
 @app.get("/")
 def root():

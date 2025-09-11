@@ -43,7 +43,7 @@ text_prompt = '''
 class WelcomeModule:
     @staticmethod
     def welcome_message():
-        return "👋 Welcome! Please upload an image of your food to find out its calorie content. You can also chat with me about anything!"
+        return "👋 Welcome! Please upload an image of your meal to find out its calorie content. You can also chat with me about anything!"
 
 class ConversationModule:
     @staticmethod
