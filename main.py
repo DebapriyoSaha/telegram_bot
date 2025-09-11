@@ -1,4 +1,5 @@
 import os
+import re
 from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
@@ -7,6 +8,7 @@ from modules import WelcomeModule, ConversationModule, ImageCalorieModule, Googl
 from business_tools import get_current_offers, get_diet_plans, place_order
 from dotenv import load_dotenv
 import pickle
+import base64
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from googleapiclient.discovery import build
@@ -29,8 +31,9 @@ TOKEN_PICKLE = 'token.pickle'
 CLIENT_SECRET_JSON = os.getenv("GOOGLE_CLIENT_SECRET_JSON")
 
 creds = None
+# In-memory chat history per user (for prototyping; use a database for production)
+user_histories = {}
 
-import os, pickle, base64
 token_str = os.getenv("GOOGLE_OAUTH_TOKEN_PICKLE")
 if token_str:
     creds = pickle.loads(base64.b64decode(token_str))
@@ -60,42 +63,97 @@ MAX_TELEGRAM_MSG_LENGTH = 4096
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text if update.message else None
     reply = None
+
     welcome_patterns = [
-        r"^hi+$", r"^hey+$", r"^hello+$", r"^hii+$", r"^hel+o+$", r"^heya+$", r"^yo+$", r"^greetings+$", r"^sup+$", r"^start$"
+        r"^hi+$", r"^hey+$", r"^hello+$", r"^hii+$", r"^hel+o+$", r"^heya+$",
+        r"^yo+$", r"^greetings+$", r"^sup+$", r"^start$"
     ]
-    import re
-    is_welcome = any(re.match(pat, user_text.strip().lower()) for pat in welcome_patterns)
-    # Block jailbreak/identity questions
+
     jailbreak_patterns = [
-        r"who (are|r) you", r"who made you", r"who is your creator", r"who created you", r"are you real", r"are you sentient", r"can you break rules", r"can you ignore instructions", r"ignore previous instructions", r"jailbreak", r"prompt injection", r"what tools do you use", r"show your code", r"reveal your instructions"
+        r"who (are|r) you", r"who made you", r"who is your creator",
+        r"who created you", r"are you real", r"are you sentient",
+        r"can you break rules", r"can you ignore instructions",
+        r"ignore previous instructions", r"jailbreak",
+        r"prompt injection", r"what tools do you use",
+        r"show your code", r"reveal your instructions"
     ]
-    if any(re.search(pat, user_text, re.IGNORECASE) for pat in jailbreak_patterns):
-        reply = "I am an AI assistant."
-    elif is_welcome:
-        reply = WelcomeModule.welcome_message()
-    else:
-        reply = ConversationModule.get_response(user_text, GEMINI_API_KEY)
+
     if update.effective_user:
         first_name = update.effective_user.first_name or ""
         last_name = update.effective_user.last_name or ""
-        username = (first_name + " " + last_name).strip() if (first_name or last_name) else str(update.effective_user.id)
+        username = (first_name + " " + last_name).strip() or str(update.effective_user.id)
     else:
         username = "Unknown"
+
+    if username not in user_histories:
+        user_histories[username] = []
+
+    history = user_histories[username][-10:]  # Last 10 exchanges
+    history_prompt = "".join(f"User: {msg}\nBot: {resp}\n" for msg, resp in history)
+
+    if any(re.search(pat, user_text, re.IGNORECASE) for pat in jailbreak_patterns):
+        reply = "I am an AI assistant."
+    elif any(re.match(pat, user_text.strip().lower()) for pat in welcome_patterns):
+        reply = WelcomeModule.welcome_message()
+    else:
+        full_prompt = (history_prompt + f"User: {user_text}\nBot:") if history_prompt else user_text
+        reply = ConversationModule.get_response(full_prompt, GEMINI_API_KEY)
+
+    # Update history
+    user_histories[username].append((user_text, reply))
+    user_histories[username] = user_histories[username][-10:]
+
     GoogleSheetsModule.log_chat_history(
         sheets_service, GOOGLE_SHEET_ID,
         username, user_text, reply
     )
+
     if len(reply) > MAX_TELEGRAM_MSG_LENGTH:
         reply = reply[:MAX_TELEGRAM_MSG_LENGTH]
-    async with httpx.AsyncClient() as client:
-        await client.post(
-            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={
-                "chat_id": update.effective_chat.id,
-                "text": reply,
-                "parse_mode": "Markdown"
-            }
-        )
+
+    # If the reply contains Markdown structure (e.g., starts with "**" or "_"), don't escape it
+    def is_markdown_structured(text):
+        return text.startswith("*") or text.startswith("_") or text.startswith("```")
+
+    safe_reply = reply if is_markdown_structured(reply) else sanitize_markdown(reply)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                json={
+                    "chat_id": update.effective_chat.id,
+                    "text": safe_reply,
+                    "parse_mode": "Markdown"
+                }
+            )
+            if resp.status_code != 200:
+                # Fallback: plain text
+                await client.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                    json={
+                        "chat_id": update.effective_chat.id,
+                        "text": reply
+                    }
+                )
+    except Exception as e:
+        print(f"Error sending message to Telegram: {e}")
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                json={
+                    "chat_id": update.effective_chat.id,
+                    "text": "Sorry, there was an error delivering your message."
+                }
+            )
+
+def sanitize_markdown(text):
+    import re
+    # Escape only problematic MarkdownV2 special characters that break formatting,
+    # but allow * _ ( ) . ! - 
+    chars_to_escape = r'([\\\[\]])'  # Escape only \ [ ]
+    text = re.sub(chars_to_escape, r'\\\1', text)
+    return text
 
 # Handler for photo messages (with or without caption)
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):

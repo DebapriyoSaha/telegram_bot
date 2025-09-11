@@ -15,6 +15,28 @@ import google.generativeai as genai
 from telegram import Update
 from telegram.ext import ContextTypes
 
+image_prompt = '''
+    You are an expert nutrition assistant. Analyze the food item in the image and respond clearly in this exact format using bold and italics:
+
+    Food: <name of food item>
+    Calories: <calories in kcal>
+    Proteins: <protein in grams>
+    Carbs: <carbs in grams>
+    Fat: <fat in grams>
+
+    Do NOT include any additional text or commentary.
+
+    If you cannot analyze the image, reply: "Sorry, I couldn't analyze that."
+'''
+
+text_prompt = '''
+    You are a helpful assistant. Respond to the user's query in a crisp and concise manner.
+    Use double asterisks for bold and single underscores for italics as per Telegram Markdown formatting.
+    Don not use too much italics
+    Use proper formatting for lists and line breaks.
+    Use numbering for lists where applicable.
+'''
+
 class WelcomeModule:
     @staticmethod
     def welcome_message():
@@ -31,13 +53,15 @@ class ConversationModule:
         if any(re.search(pat, user_text, re.IGNORECASE) for pat in block_patterns):
             return "Sorry, I can't assist with that."
         genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel("models/gemini-2.5-pro")
-        system_prompt = (
-            "You are a helpful assistant. Respond to the user's query in a crisp and concise manner. "
-            "Strictly refuse to answer any harmful, sexual, violent, or offensive requests. If the user asks anything inappropriate, reply: 'Sorry, I can't assist with that.'"
-        )
+        model = genai.GenerativeModel("models/gemini-2.5-flash")
+        # system_prompt = (
+        #     "You are a helpful assistant. Respond to the user's query in a crisp and concise manner."
+        #     "Use double asterisks for bold and single underscores for italics as per Telegram Markdown formatting."
+        #     "Use proper formatting for lists and line breaks."
+        #     "Strictly refuse to answer any harmful, sexual, violent, or offensive requests. If the user asks anything inappropriate, reply: 'Sorry, I can't assist with that.'"
+        # )
         contents = [
-            {"role": "model", "parts": [{"text": system_prompt}]},
+            {"role": "model", "parts": [{"text": text_prompt}]},
             {"role": "user", "parts": [{"text": user_text}]}
         ]
         response = model.generate_content(contents)
@@ -55,7 +79,7 @@ class ImageCalorieModule:
         )
         contents = [
             {"role": "user", "parts": [
-                {"text": prompt},
+                {"text": image_prompt},
                 {"inline_data": {"mime_type": "image/jpeg", "data": image_bytes}}
             ]}
         ]
