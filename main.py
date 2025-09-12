@@ -263,9 +263,12 @@ async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('awaiting_feedback'):
         feedback_text = update.message.text
-        username = update.effective_user.username or str(update.effective_user.id)
+        # Use full name if available, else fallback to username or user id
+        first_name = update.effective_user.first_name or ""
+        last_name = update.effective_user.last_name or ""
+        name = (first_name + " " + last_name).strip() or update.effective_user.username or str(update.effective_user.id)
         # Store feedback in Google Sheets (Feedback page)
-        GoogleSheetsModule.log_feedback(sheets_service, GOOGLE_SHEET_ID, username, feedback_text)
+        GoogleSheetsModule.log_feedback(sheets_service, GOOGLE_SHEET_ID, name, feedback_text)
         reply = "Thank you for your feedback!"
         async with httpx.AsyncClient() as client:
             await client.post(
