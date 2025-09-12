@@ -166,6 +166,22 @@ class ImageCalorieModule:
 
 class GoogleSheetsModule:
     @staticmethod
+    def log_feedback(service, spreadsheet_id, username, feedback_text):
+        from datetime import datetime
+        now = datetime.now()
+        sheet = service.spreadsheets()
+        # Get current number of rows for auto-incremental ID
+        result = sheet.values().get(spreadsheetId=spreadsheet_id, range="Feedback!B2:B").execute()
+        values = result.get('values', [])
+        next_id = len(values) + 1
+        row = [next_id, now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), username, feedback_text]
+        sheet.values().append(
+            spreadsheetId=spreadsheet_id,
+            range="Feedback!B1",
+            valueInputOption="RAW",
+            body={"values": [row]}
+        ).execute()
+    @staticmethod
     def log_chat_history(service, spreadsheet_id, username, user_query, bot_message, input_tokens=0, output_tokens=0):
         from datetime import datetime
         now = datetime.now()

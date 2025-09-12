@@ -228,7 +228,61 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
         )
 
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+from telegram.ext import CommandHandler
+
+# /start command handler
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reply = WelcomeModule.welcome_message()
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={
+                "chat_id": update.effective_chat.id,
+                "text": reply,
+                "parse_mode": "Markdown"
+            }
+        )
+
+# /feedback command handler
+async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = "Please share your feedback."
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={
+                "chat_id": update.effective_chat.id,
+                "text": prompt,
+                "parse_mode": "Markdown"
+            }
+        )
+    # Set a flag in context to expect feedback next
+    context.user_data['awaiting_feedback'] = True
+
+# Feedback message handler
+async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get('awaiting_feedback'):
+        feedback_text = update.message.text
+        username = update.effective_user.username or str(update.effective_user.id)
+        # Store feedback in Google Sheets (Feedback page)
+        GoogleSheetsModule.log_feedback(sheets_service, GOOGLE_SHEET_ID, username, feedback_text)
+        reply = "Thank you for your feedback!"
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                json={
+                    "chat_id": update.effective_chat.id,
+                    "text": reply,
+                    "parse_mode": "Markdown"
+                }
+            )
+        context.user_data['awaiting_feedback'] = False
+    else:
+        await handle_text(update, context)
+
+application.add_handler(CommandHandler("start", start_command))
+application.add_handler(CommandHandler("feedback", feedback_command))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_feedback))
 application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 @app.post("/webhook")
