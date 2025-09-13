@@ -312,7 +312,7 @@ async def telegram_webhook(request: Request):
                         f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
                         json={
                             "chat_id": chat_id,
-                            "text": "Sorry, a server error occurred. Please retry your request.",
+                            "text": "Sorry, I couldn't analyze this image. Please upload a food item.",
                             "parse_mode": "Markdown"
                         }
                     )
