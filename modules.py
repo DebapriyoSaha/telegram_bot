@@ -166,7 +166,7 @@ class ImageCalorieModule:
 
 class GoogleSheetsModule:
     @staticmethod
-    def log_feedback(service, spreadsheet_id, user_id, name, feedback_text):
+    def log_feedback(service, spreadsheet_id, username, name, feedback_text):
         from datetime import datetime
         now = datetime.now()
         sheet = service.spreadsheets()
@@ -174,7 +174,7 @@ class GoogleSheetsModule:
         result = sheet.values().get(spreadsheetId=spreadsheet_id, range="Feedback!B2:B").execute()
         values = result.get('values', [])
         next_id = len(values) + 1
-        row = [next_id, now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), user_id, name, feedback_text]
+        row = [next_id, now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), username, name, feedback_text]
         sheet.values().append(
             spreadsheetId=spreadsheet_id,
             range="Feedback!B1",
@@ -182,14 +182,14 @@ class GoogleSheetsModule:
             body={"values": [row]}
         ).execute()
     @staticmethod
-    def log_chat_history(service, spreadsheet_id, user_id, name, user_query, bot_message, input_tokens=0, output_tokens=0):
+    def log_chat_history(service, spreadsheet_id, username, name, user_query, bot_message, input_tokens=0, output_tokens=0):
         from datetime import datetime
         now = datetime.now()
         sheet = service.spreadsheets()
         result = sheet.values().get(spreadsheetId=spreadsheet_id, range="Chat History!B2:B").execute()
         values = result.get('values', [])
         next_id = len(values) + 1
-        row = [next_id, now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), user_id, name, user_query, bot_message, input_tokens, output_tokens]
+        row = [next_id, now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), username, name, user_query, bot_message, input_tokens, output_tokens]
         sheet.values().append(
             spreadsheetId=spreadsheet_id,
             range="Chat History!B1",
@@ -198,14 +198,14 @@ class GoogleSheetsModule:
         ).execute()
 
     @staticmethod
-    def log_meal_tracker(service, spreadsheet_id, user_id, name, food, calories, proteins, carbs, fat, picture_url, time_elapsed, input_tokens=0, output_tokens=0):
+    def log_meal_tracker(service, spreadsheet_id, username, name, food, calories, proteins, carbs, fat, picture_url, time_elapsed, input_tokens=0, output_tokens=0):
         from datetime import datetime
         now = datetime.now()
         sheet = service.spreadsheets()
         result = sheet.values().get(spreadsheetId=spreadsheet_id, range="Meal Tracker!B2:B").execute()
         values = result.get('values', [])
         next_id = len(values) + 1
-        row = [next_id, now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), user_id, name, food, calories, proteins, carbs, fat, picture_url, time_elapsed, input_tokens, output_tokens]
+        row = [next_id, now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), username, name, food, calories, proteins, carbs, fat, picture_url, time_elapsed, input_tokens, output_tokens]
         sheet.values().append(
             spreadsheetId=spreadsheet_id,
             range="Meal Tracker!B1",

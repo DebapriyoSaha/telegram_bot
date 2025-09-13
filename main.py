@@ -94,15 +94,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         first_name = update.effective_user.first_name or ""
         last_name = update.effective_user.last_name or ""
         name = (first_name + " " + last_name).strip() or update.effective_user.username or str(update.effective_user.id)
-        user_id = str(update.effective_user.id)
+        username = update.effective_user.username or str(update.effective_user.id)
     else:
         name = "Unknown"
-        user_id = "Unknown"
+        username = "Unknown"
 
-    if user_id not in user_histories:
-        user_histories[user_id] = []
+    if username not in user_histories:
+        user_histories[username] = []
 
-    history = user_histories[user_id][-10:]  # Last 10 exchanges
+    history = user_histories[username][-10:]  # Last 10 exchanges
     history_prompt = "".join(f"User: {msg}\nBot: {resp}\n" for msg, resp in history)
 
     if any(re.search(pat, user_text, re.IGNORECASE) for pat in jailbreak_patterns):
@@ -118,12 +118,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply, input_tokens, output_tokens = ConversationModule.get_response(full_prompt, GROQ_API_KEY)
 
     # Update history
-    user_histories[user_id].append((user_text, reply))
-    user_histories[user_id] = user_histories[user_id][-10:]
+    user_histories[username].append((user_text, reply))
+    user_histories[username] = user_histories[username][-10:]
 
     GoogleSheetsModule.log_chat_history(
         sheets_service, GOOGLE_SHEET_ID,
-        user_id, name, user_text, reply, input_tokens, output_tokens
+        username, name, user_text, reply, input_tokens, output_tokens
     )
 
     if len(reply) > MAX_TELEGRAM_MSG_LENGTH:
@@ -188,10 +188,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         first_name = update.effective_user.first_name or ""
         last_name = update.effective_user.last_name or ""
         name = (first_name + " " + last_name).strip() if (first_name or last_name) else update.effective_user.username or str(update.effective_user.id)
-        user_id = str(update.effective_user.id)
+        username = update.effective_user.username or str(update.effective_user.id)
     else:
         name = "Unknown"
-        user_id = "Unknown"
+        username = "Unknown"
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     image_filename = f"{name}_{timestamp}.jpg"
     # Upload to Google Drive
@@ -207,13 +207,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Log to Meal Tracker sheet
     GoogleSheetsModule.log_meal_tracker(
         sheets_service, GOOGLE_SHEET_ID,
-        user_id, name, entry.food, entry.calories, entry.proteins, entry.carbs, entry.fat, entry.image_url, entry.time_elapsed, input_tokens, output_tokens
+        username, name, entry.food, entry.calories, entry.proteins, entry.carbs, entry.fat, entry.image_url, entry.time_elapsed, input_tokens, output_tokens
     )
     # Store the analysis report in user_histories for context-aware chat
-    if user_id not in user_histories:
-        user_histories[user_id] = []
-    user_histories[user_id].append(("[Image Analysis]", text))
-    user_histories[user_id] = user_histories[user_id][-10:]
+    if username not in user_histories:
+        user_histories[username] = []
+    user_histories[username].append(("[Image Analysis]", text))
+    user_histories[username] = user_histories[username][-10:]
     if update.effective_user:
         first_name = update.effective_user.first_name or ""
         last_name = update.effective_user.last_name or ""
@@ -270,9 +270,9 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         first_name = update.effective_user.first_name or ""
         last_name = update.effective_user.last_name or ""
         name = (first_name + " " + last_name).strip() or update.effective_user.username or str(update.effective_user.id)
-        user_id = str(update.effective_user.id)
+        username = update.effective_user.username or str(update.effective_user.id)
         # Store feedback in Google Sheets (Feedback page)
-        GoogleSheetsModule.log_feedback(sheets_service, GOOGLE_SHEET_ID, user_id, name, feedback_text)
+        GoogleSheetsModule.log_feedback(sheets_service, GOOGLE_SHEET_ID, username, name, feedback_text)
         reply = "Thank you for your feedback!"
         async with httpx.AsyncClient() as client:
             await client.post(
